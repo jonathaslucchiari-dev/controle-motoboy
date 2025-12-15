@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Motoboys</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  font-family:Arial,Helvetica,sans-serif;
+  background:#121212;
+  padding:12px;
+  font-size:18px;
+  color:#e0e0e0
+}
+h2{text-align:center;color:#fff}
+
+.tabs{display:flex;gap:10px;margin-bottom:12px}
+.tabs button{
+  flex:1;padding:14px;background:#2a2a2a;color:#fff;
+  border:none;border-radius:8px;font-size:18px
+}
+.tabs button.active{background:#1565c0}
+
+.card{
+  background:#1e1e1e;padding:16px;margin-bottom:12px;border-radius:10px
+}
+
+label{font-weight:bold;color:#ccc}
+select,input,textarea,button{
+  width:100%;padding:14px;margin-top:8px;font-size:18px;
+  border-radius:8px;border:1px solid #333;background:#2a2a2a;color:#fff
+}
+button{border:none;cursor:pointer}
+
+.btn-green{background:#2e7d32}
+.btn-red{background:#c62828}
+.btn-blue{background:#1565c0}
+.btn-purple{background:#6a1b9a}
+.btn-yellow{background:#f9a825;color:#000}
+
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btns button{width:30%;background:#1565c0}
+
+.total{font-size:20px;font-weight:bold}
+.log{font-size:14px;color:#bdbdbd;margin-left:8px}
+hr{border:1px solid #333;margin:10px 0}
+.hidden{display:none}
+
+.whats-btn{
+  display:flex;align-items:center;gap:8px;
+  background:#25d366;color:#000;padding:10px;
+  border-radius:8px;margin-top:10px
+}
+.whats-btn img{width:26px;height:26px}
+
+.footer-logo{text-align:center;margin-top:30px;opacity:.9}
+.footer-logo img{max-width:180px}
+</style>
+</head>
+
+<body>
+
+<h2>Controle de Motoboys</h2>
+
+<div class="tabs">
+  <button id="tabCaixa" class="active" onclick="mostrar('caixa')">Caixa</button>
+  <button id="tabPend" onclick="mostrar('pendencias')">Pendências</button>
+</div>
+
+<!-- ================= CAIXA ================= -->
+<div id="caixa">
+
+<div class="card">
+  <label>Motoboy</label>
+  <select id="motoboy"></select>
+
+  <label>Valor (taxa | d desconto | c caixinha)</label>
+  <input id="valor" placeholder="8 | 4+4 | d5 | c20">
+
+  <button class="btn-green" onclick="lancar()">Lançar (Enter)</button>
+</div>
+
+<div class="card">
+  <label>Botões rápidos</label>
+  <div class="btns">
+    <button onclick="rapido(2)">+2</button>
+    <button onclick="rapido(4)">+4</button>
+    <button onclick="rapido(5)">+5</button>
+    <button onclick="rapido(6)">+6</button>
+    <button onclick="rapido(8)">+8</button>
+    <button onclick="rapido(10)">+10</button>
+    <button onclick="rapido(12)">+12</button>
+    <button onclick="rapido(15)">+15</button>
+	    <button onclick="rapido(20)">+20</button>
+  </div>
+</div>
+
+<div class="card">
+  <button class="btn-yellow" onclick="corrigirUltimo()">Corrigir último lançamento</button>
+</div>
+
+<div class="card" id="resumo"></div>
+
+<div class="card">
+  <button class="btn-purple" onclick="relatorioDia()">Relatório do Dia</button>
+  <button class="btn-purple" onclick="relatorioSemana()">Relatório Semanal</button>
+
+  <button class="btn-blue" onclick="backupAutomatico()">Exportar Backup</button>
+
+  <button class="btn-red" onclick="encerrarNoite()">Encerrar Noite</button>
+</div>
+
+</div>
+
+<!-- ================= PENDÊNCIAS ================= -->
+<div id="pendencias" class="hidden">
+
+<div class="card">
+  <label>Motoboy</label>
+  <select id="motoboyPend"></select>
+
+  <label>Valor da pendência</label>
+  <input id="valorPend">
+
+  <label>Observação</label>
+  <textarea id="obsPend"></textarea>
+
+  <button class="btn-green" onclick="salvarPendencia()">Salvar</button>
+  <button class="btn-blue" onclick="abaterPendencia()">Abater</button>
+  <button class="btn-red" onclick="zerarPendencia()">Zerar</button>
+</div>
+
+<div class="card" id="listaPendencias"></div>
+
+</div>
+
+<div class="footer-logo">
+  <img src="lucchiari.jpeg" alt="Pizzaria Lucchiari">
+</div>
+
+<script>
+const FIXO=60;
+const FIXOS={
+  "Everton":"5519994389481",
+  "Murilo":"5519993804869",
+  "Arsely":"5519994145622",
+  "Welinton":"5519988872479"
+};
+
+const LIMITE_LOGS = 10;
+function consolidarLogs(logs) {
+  if (logs.length <= LIMITE_LOGS) return logs;
+
+  return [{
+    tipo: "Resumo",
+    valor: logs.length,
+    hora: new Date().toLocaleTimeString(),
+    resumo: true
+  }];
+}
+
+
+let temporarios={};
+let dadosDia={};
+let historico=JSON.parse(localStorage.getItem("historicoMotoboy"))||{};
+let pendencias=JSON.parse(localStorage.getItem("pendenciasMotoboy"))||{};
+let modoRelatorio=false;
+let podeCorrigir = {};
+
+
+function mostrar(t){
+  caixa.classList.toggle("hidden",t!=="caixa");
+  pendenciasDiv.classList.toggle("hidden",t!=="pendencias");
+  tabCaixa.classList.toggle("active",t==="caixa");
+  tabPend.classList.toggle("active",t==="pendencias");
+  if(t==="pendencias") atualizarPendencias();
+}
+
+function carregarMotoboys(){
+  motoboy.innerHTML=motoboyPend.innerHTML="";
+  Object.keys(FIXOS).concat(Object.keys(temporarios)).forEach(m=>{
+    motoboy.add(new Option(m,m));
+    motoboyPend.add(new Option(m,m));
+  });
+  motoboy.add(new Option("Outro","Outro"));
+}
+
+function calcular(t){
+  t=t.replace(/\s+/g,"");
+  if(!/^[0-9+]+$/.test(t))return null;
+  return t.split("+").reduce((s,v)=>s+Number(v),0);
+}
+function hora(){return new Date().toLocaleTimeString();}
+
+function lancar(){
+  let m=motoboy.value;
+  if(m==="Outro"){
+    const nome=prompt("Nome do motoboy:");
+    if(!nome)return;
+    temporarios[nome]=true;
+    carregarMotoboys();
+    motoboy.value=nome;
+    m=nome;
+  }
+  const txt=valor.value.trim().toLowerCase();
+  if(!txt)return;
+  if(!dadosDia[m])dadosDia[m]={taxas:0,descontos:0,caixinha:0,log:[]};
+
+  if(txt.startsWith("c")){
+    const v=calcular(txt.replace(/^c\s*/,""));
+    dadosDia[m].caixinha+=v;
+    dadosDia[m].log.push({tipo:"Caixinha",valor:v,hora:hora()});
+  }else if(txt.startsWith("d")){
+    const v=calcular(txt.replace(/^d\s*/,""));
+    const motivo=prompt("Motivo do desconto:");
+    dadosDia[m].descontos+=v;
+    dadosDia[m].log.push({tipo:"Desconto",valor:v,motivo,hora:hora()});
+  }else{
+    const v=calcular(txt);
+    dadosDia[m].taxas+=v;
+    dadosDia[m].log.push({tipo:"Taxa",valor:v,hora:hora()});
+  }
+valor.value="";
+podeCorrigir[m] = true;   // <-- ADICIONE ESTA LINHA
+atualizarResumo();
+
+}
+
+function rapido(v){valor.value=v;lancar();}
+
+function corrigirUltimo() {
+  const m = motoboy.value;
+
+  if (!dadosDia[m] || !dadosDia[m].log.length) {
+    alert("Nenhum lançamento para corrigir.");
+    return;
+  }
+
+  if (!podeCorrigir[m]) {
+    alert("A correção já foi usada. Lance um novo valor para liberar novamente.");
+    return;
+  }
+
+  if (!confirm("Deseja corrigir o último lançamento deste motoboy?")) return;
+
+  const u = dadosDia[m].log.pop();
+
+  if (u.tipo === "Taxa") dadosDia[m].taxas -= u.valor;
+  if (u.tipo === "Desconto") dadosDia[m].descontos -= u.valor;
+  if (u.tipo === "Caixinha") dadosDia[m].caixinha -= u.valor;
+
+  podeCorrigir[m] = false; // bloqueia nova correção
+  atualizarResumo();
+}
+
+
+function atualizarResumo(){
+  let h="";
+  for(const m in dadosDia){
+    const d=dadosDia[m];
+    const total=FIXO+d.taxas-d.descontos+d.caixinha;
+    h+=`<strong>${m}</strong><br>
+    Fixo: R$ 60,00<br>
+    Taxas: R$ ${d.taxas.toFixed(2)}<br>
+    Descontos: -R$ ${d.descontos.toFixed(2)}<br>
+    Caixinha: R$ ${d.caixinha.toFixed(2)}<br>
+    <span class="total">Total a receber: R$ ${total.toFixed(2)}</span><br>`;
+    d.log.forEach(l => {
+  if (l.resumo) {
+    h += `<div class="log">Resumo do dia (${l.valor} lançamentos)</div>`;
+  } else {
+    h += `<div class="log">${l.tipo} ${l.tipo==="Desconto"?"-":""}${l.valor} ${l.motivo||""} - ${l.hora}</div>`;
+  }
+});
+
+    if(modoRelatorio && FIXOS[m]){
+      h+=`
+      <button class="whats-btn" onclick="enviarWhats('${m}')">
+        <img src="whatsapp-logo-icone.png"> Enviar WhatsApp
+      </button>`;
+    }
+    h+="<hr>";
+  }
+  resumo.innerHTML=h;
+}
+
+function enviarWhats(m){
+  const d = dadosDia[m];
+  const total = FIXO + d.taxas - d.descontos + d.caixinha;
+
+  let msg = `Resumo do dia\n\nMotoboy: ${m}\n`;
+  msg += `Fixo: R$ ${FIXO.toFixed(2)}\n`;
+  msg += `Taxas: R$ ${d.taxas.toFixed(2)}\n`;
+
+  // Só mostra caixinha se existir
+  if (d.caixinha > 0) {
+    msg += `Caixinha: R$ ${d.caixinha.toFixed(2)}\n`;
+  }
+
+  // Só mostra desconto se existir
+  if (d.descontos > 0) {
+    msg += `Descontos: -R$ ${d.descontos.toFixed(2)}\n`;
+  }
+
+  msg += `\nTotal a receber: R$ ${total.toFixed(2)}\n`;
+
+  // Lista descontos com motivo, se houver
+  const descontos = d.log.filter(l => l.tipo === "Desconto");
+  if (descontos.length) {
+    msg += `\nDescontos detalhados:\n`;
+    descontos.forEach(l => {
+      msg += `- R$ ${l.valor.toFixed(2)} (${l.motivo})\n`;
+    });
+  }
+
+  window.open(
+    `https://wa.me/${FIXOS[m]}?text=${encodeURIComponent(msg)}`,
+    "_blank"
+  );
+}
+
+
+function relatorioDia() {
+  modoRelatorio = !modoRelatorio; // alterna liga/desliga
+  atualizarResumo();
+}
+
+function relatorioSemana(){
+  let s={};
+  for(const d in historico){
+    for(const m in historico[d]){
+      let x=historico[d][m];
+     s[m] = (s[m] || 0)
+  + FIXO
+  + (x.taxas || 0)
+  - (x.descontos || 0)
+  + (x.caixinha || 0);
+
+    }
+  }
+  let h="<h3>Relatório Semanal</h3>";
+  for(const m in s)h+=`${m}: R$ ${s[m].toFixed(2)}<br>`;
+  resumo.innerHTML=h;
+}
+
+function salvarPendencia(){
+  pendencias[motoboyPend.value]={valor:Number(valorPend.value),obs:obsPend.value};
+  localStorage.setItem("pendenciasMotoboy",JSON.stringify(pendencias));
+  atualizarPendencias();
+}
+function abaterPendencia(){
+  const m=motoboyPend.value;
+  const v=Number(prompt("Valor a abater:"));
+  if(!pendencias[m]||v<=0)return;
+  pendencias[m].valor-=v;
+  pendencias[m].obs+=` | Abatido ${v} em ${new Date().toLocaleDateString()}`;
+  localStorage.setItem("pendenciasMotoboy",JSON.stringify(pendencias));
+  atualizarPendencias();
+}
+function zerarPendencia(){
+  delete pendencias[motoboyPend.value];
+  localStorage.setItem("pendenciasMotoboy",JSON.stringify(pendencias));
+  atualizarPendencias();
+}
+function atualizarPendencias(){
+  let h="";
+  for(const m in pendencias){
+    h+=`${m}: R$ ${pendencias[m].valor}<br>${pendencias[m].obs}<hr>`;
+  }
+  listaPendencias.innerHTML=h||"Nenhuma pendência registrada.";
+}
+
+function encerrarNoite() {
+  const hoje = new Date().toLocaleDateString();
+
+  if (!historico[hoje]) historico[hoje] = {};
+
+  for (const m in dadosDia) {
+    if (!historico[hoje][m]) {
+      historico[hoje][m] = {
+        taxas: 0,
+        descontos: 0,
+        caixinha: 0,
+        log: []
+      };
+    }
+
+    historico[hoje][m].taxas += dadosDia[m].taxas;
+    historico[hoje][m].descontos += dadosDia[m].descontos;
+    historico[hoje][m].caixinha += dadosDia[m].caixinha;
+    historico[hoje][m].log =
+      historico[hoje][m].log.concat(dadosDia[m].log);
+  }
+
+  localStorage.setItem("historicoMotoboy", JSON.stringify(historico));
+
+  dadosDia = {};
+  temporarios = {};
+  modoRelatorio = false;
+
+  carregarMotoboys();
+  atualizarResumo();
+}
+
+
+
+function backupAutomatico() {
+  const backup = {
+    dataBackup: new Date().toLocaleString(),
+    historico: historico,
+    pendencias: pendencias
+  };
+
+  const blob = new Blob(
+    [JSON.stringify(backup, null, 2)],
+    { type: "application/json" }
+  );
+
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "backup_motoboy.json";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  URL.revokeObjectURL(url);
+}
+
+
+document.getElementById("valor").addEventListener("keydown",e=>{
+  if(e.key==="Enter")lancar();
+});
+const pendenciasDiv=document.getElementById("pendencias");
+carregarMotoboys();
+
+</script>
+
+</body>
+</html>
